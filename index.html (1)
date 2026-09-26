@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Mini Casino</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: radial-gradient(circle at top, #1a1a2e, #0a0a14);
+    color:#fff; min-height:100vh; padding:16px; padding-bottom:80px;
+  }
+  .balance {
+    background: linear-gradient(135deg,#ffd700,#ff9500);
+    color:#000; font-weight:700; padding:12px 20px; border-radius:14px;
+    text-align:center; font-size:18px; margin-bottom:16px;
+    box-shadow:0 4px 20px rgba(255,215,0,.3);
+  }
+  .nav {
+    position:fixed; bottom:0; left:0; right:0; display:flex;
+    background:rgba(20,20,35,.95); backdrop-filter:blur(10px);
+    border-top:1px solid rgba(255,215,0,.2); padding:8px;
+  }
+  .nav button {
+    flex:1; background:none; border:none; color:#888; font-size:11px;
+    padding:8px 2px; cursor:pointer; transition:.2s;
+  }
+  .nav button.active { color:#ffd700; }
+  .nav button .icon { display:block; font-size:20px; margin-bottom:2px; }
+  .screen { display:none; animation: fadeIn .3s; }
+  .screen.active { display:block; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
+  h2 { text-align:center; margin-bottom:16px; color:#ffd700; font-size:20px; }
+
+  /* Кейсы */
+  .cases-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .case-card {
+    background: rgba(255,255,255,.05); border:1px solid rgba(255,215,0,.2);
+    border-radius:16px; padding:16px; text-align:center; cursor:pointer; transition:.2s;
+  }
+  .case-card:active { transform:scale(.96); }
+  .case-card .emoji { font-size:40px; display:block; margin-bottom:8px; }
+  .case-card .name { font-size:13px; font-weight:600; margin-bottom:4px; }
+  .case-card .price { font-size:12px; color:#ffd700; }
+  .case-common { border-color:#888; }
+  .case-rare { border-color:#4a9eff; }
+  .case-epic { border-color:#b44aff; }
+  .case-legendary { border-color:#ffd700; box-shadow:0 0 20px rgba(255,215,0,.3); }
+
+  /* Рулетка */
+  .roulette-wrap {
+    position:relative; overflow:hidden; height:100px;
+    background:rgba(0,0,0,.4); border-radius:12px; margin:20px 0;
+    border:1px solid rgba(255,215,0,.3);
+  }
+  .roulette-wrap::before {
+    content:''; position:absolute; left:50%; top:0; bottom:0; width:2px;
+    background:#ffd700; z-index:2; box-shadow:0 0 10px #ffd700;
+  }
+  .roulette { display:flex; gap:8px; padding:10px; transition:transform 4s cubic-bezier(.15,.85,.3,1); }
+  .roulette .item {
+    min-width:70px; height:80px; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; border-radius:10px;
+    background:rgba(255,255,255,.08); font-size:11px; flex-shrink:0;
+  }
+  .roulette .item .e { font-size:26px; }
+
+  /* Сапёр */
+  .mines-info { text-align:center; margin-bottom:12px; }
+  .mines-info .mult { font-size:28px; color:#ffd700; font-weight:700; }
+  .grid6 { display:grid; grid-template-columns:repeat(6,1fr); gap:6px; max-width:340px; margin:0 auto 16px; }
+  .cell6 {
+    aspect-ratio:1; background:rgba(255,255,255,.08);
+    border:1px solid rgba(255,255,255,.15); border-radius:8px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:18px; cursor:pointer; transition:.15s; user-select:none;
+  }
+  .cell6:active:not(.opened) { transform:scale(.9); }
+  .cell6.opened { background:rgba(74,158,255,.2); border-color:#4a9eff; }
+  .cell6.mine { background:rgba(255,50,50,.3); border-color:#ff3232; }
+  .cell6.safe { background:rgba(50,255,100,.15); }
+
+  /* Кликер */
+  .clicker-wrap { text-align:center; padding:10px 0; }
+  .coin-btn {
+    width:200px; height:200px; border-radius:50%; border:none;
+    background: radial-gradient(circle at 35% 30%, #ffe680, #ffb700 55%, #b36b00);
+    box-shadow: 0 10px 30px rgba(255,183,0,.5), inset 0 -8px 20px rgba(0,0,0,.3);
+    font-size:90px; cursor:pointer; transition:transform .08s;
+    display:flex; align-items:center; justify-content:center; margin:10px auto;
+    user-select:none;
+  }
+  .coin-btn:active { transform:scale(.92); }
+  .coin-btn.pop { animation: pop .15s; }
+  @keyframes pop { 0%{transform:scale(.9)} 100%{transform:scale(1)} }
+  .clicker-stats {
+    background:rgba(255,255,255,.05); border:1px solid rgba(255,215,0,.2);
+    border-radius:14px; padding:14px; max-width:340px; margin:14px auto;
+  }
+  .clicker-stats .row { display:flex; justify-content:space-between; margin:6px 0; font-size:14px; }
+  .clicker-stats .val { color:#ffd700; font-weight:700; }
+  .float {
+    position:fixed; font-size:22px; font-weight:700; color:#ffd700;
+    pointer-events:none; animation: floatUp 1s forwards; z-index:99;
+    text-shadow: 0 0 10px rgba(255,215,0,.8);
+  }
+  @keyframes floatUp {
+    0% { opacity:1; transform: translateY(0) scale(1); }
+    100% { opacity:0; transform: translateY(-80px) scale(1.4); }
+  }
+
+  .btn {
+    display:block; width:100%; max-width:340px; margin:0 auto 10px;
+    padding:14px; border:none; border-radius:12px; font-size:15px;
+    font-weight:600; cursor:pointer; transition:.2s;
+  }
+  .btn-primary { background:linear-gradient(135deg,#ffd700,#ff9500); color:#000; }
+  .btn-secondary { background:rgba(255,255,255,.1); color:#fff; border:1px solid rgba(255,255,255,.2); }
+  .btn:active { transform:scale(.97); }
+  .btn:disabled { opacity:.4; }
+
+  .bet-row { display:flex; gap:8px; max-width:340px; margin:0 auto 12px; }
+  .bet-row input {
+    flex:1; padding:12px; border-radius:10px; border:1px solid rgba(255,255,255,.2);
+    background:rgba(0,0,0,.4); color:#fff; font-size:15px; text-align:center;
+  }
+  .msg { text-align:center; padding:10px; font-size:14px; min-height:20px; }
+  .msg.win { color:#4aff88; }
+  .msg.lose { color:#ff5555; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+
+<div class="balance">💰 <span id="balance">1000</span></div>
+
+<!-- ГЛАВНАЯ -->
+<div class="screen active" id="screen-home">
+  <h2>🎰 Добро пожаловать</h2>
+  <div class="cases-grid">
+    <div class="case-card case-common" onclick="openCase('common')">
+      <span class="emoji">📦</span><div class="name">Common</div><div class="price">100 💰</div>
+    </div>
+    <div class="case-card case-rare" onclick="openCase('rare')">
+      <span class="emoji">🎁</span><div class="name">Rare</div><div class="price">300 💰</div>
+    </div>
+    <div class="case-card case-epic" onclick="openCase('epic')">
+      <span class="emoji">💎</span><div class="name">Epic</div><div class="price">700 💰</div>
+    </div>
+    <div class="case-card case-legendary" onclick="openCase('legendary')">
+      <span class="emoji">👑</span><div class="name">Legendary</div><div class="price">1500 💰</div>
+    </div>
+  </div>
+  <div id="caseResult" class="msg"></div>
+</div>
+
+<!-- РУЛЕТКА -->
+<div class="screen" id="screen-roulette">
+  <h2 id="rouletteTitle">Открытие...</h2>
+  <div class="roulette-wrap"><div class="roulette" id="roulette"></div></div>
+  <div id="rouletteResult" class="msg"></div>
+  <button class="btn btn-secondary" onclick="go('home')">← Назад</button>
+</div>
+
+<!-- САПЁР -->
+<div class="screen" id="screen-mines">
+  <h2>💣 Сапёр 6×6</h2>
+  <div class="mines-info">
+    <div class="mult">x<span id="minesMult">1.00</span></div>
+    <div style="font-size:12px;color:#888;margin-top:4px">Мин: 5 из 36</div>
+  </div>
+  <div class="bet-row"><input type="number" id="minesBet" value="100" min="10"></div>
+  <div class="grid6" id="minesGrid"></div>
+  <button class="btn btn-primary" id="minesStart" onclick="startMines()">Начать игру</button>
+  <button class="btn btn-secondary hidden" id="minesCashout" onclick="cashoutMines()">Забрать</button>
+  <div id="minesMsg" class="msg"></div>
+</div>
+
+<!-- КЛИКЕР -->
+<div class="screen" id="screen-clicker">
+  <h2>🪙 Кликер</h2>
+  <div class="clicker-wrap">
+    <button class="coin-btn" id="coinBtn" onclick="clickCoin(event)">🪙</button>
+    <div style="font-size:13px;color:#888;margin-top:6px">Жми на монету!</div>
+  </div>
+  <div class="clicker-stats">
+    <div class="row"><span>Доход за клик:</span><span class="val" id="perClick">1</span></div>
+    <div class="row"><span>Уровень:</span><span class="val" id="clickerLevel">1</span></div>
+    <div class="row"><span>Куплено улучшений:</span><span class="val" id="upgradesBought">0</span></div>
+  </div>
+  <button class="btn btn-primary" id="upgradeBtn" onclick="buyUpgrade()">Улучшить (+1 к доходу)</button>
+  <div id="clickerMsg" class="msg"></div>
+</div>
+
+<!-- НАВИГАЦИЯ -->
+<div class="nav">
+  <button class="active" onclick="go('home')"><span class="icon">🏠</span>Кейсы</button>
+  <button onclick="go('mines')"><span class="icon">💣</span>Сапёр</button>
+  <button onclick="go('clicker')"><span class="icon">🪙</span>Кликер</button>
+</div>
+
+<script>
+const tg = window.Telegram?.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+
+// ===== БАЛАНС =====
+let balance = parseInt(localStorage.getItem('balance') || '1000');
+const updateBalance = () => {
+  document.getElementById('balance').textContent = balance;
+  localStorage.setItem('balance', balance);
+};
+updateBalance();
+
+// ===== НАВИГАЦИЯ =====
+function go(screen) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + screen).classList.add('active');
+  const tabs = ['home','mines','clicker'];
+  document.querySelectorAll('.nav button').forEach((b,i) => {
+    b.classList.toggle('active', tabs[i] === screen);
+  });
+  if (tg) tg.HapticFeedback?.impactOccurred('light');
+}
+
+// ===== КЕЙСЫ =====
+const CASES = {
+  common:    { price:100,  items:[
+    {e:'🪙',n:'10',v:10,w:40},{e:'🪙',n:'30',v:30,w:30},
+    {e:'💰',n:'80',v:80,w:20},{e:'💎',n:'200',v:200,w:8},{e:'👑',n:'500',v:500,w:2}
+  ]},
+  rare:      { price:300,  items:[
+    {e:'🪙',n:'50',v:50,w:35},{e:'💰',n:'150',v:150,w:30},
+    {e:'💎',n:'400',v:400,w:22},{e:'👑',n:'900',v:900,w:10},{e:'🏆',n:'2000',v:2000,w:3}
+  ]},
+  epic:      { price:700,  items:[
+    {e:'💰',n:'200',v:200,w:30},{e:'💎',n:'600',v:600,w:30},
+    {e:'👑',n:'1500',v:1500,w:22},{e:'🏆',n:'3000',v:3000,w:13},{e:'⭐',n:'8000',v:8000,w:5}
+  ]},
+  legendary: { price:1500, items:[
+    {e:'💎',n:'800',v:800,w:30},{e:'👑',n:'2000',v:2000,w:28},
+    {e:'🏆',n:'5000',v:5000,w:22},{e:'⭐',n:'12000',v:12000,w:15},{e:'🌟',n:'30000',v:30000,w:5}
+  ]}
+};
+
+function pickWeighted(items) {
+  const total = items.reduce((s,i) => s+i.w, 0);
+  let r = Math.random() * total;
+  for (const it of items) { r -= it.w; if (r <= 0) return it; }
+  return items[0];
+}
+
+let rolling = false;
+function openCase(key) {
+  if (rolling) return;
+  const c = CASES[key];
+  if (balance < c.price) { showMsg('caseResult','Недостаточно монет','lose'); return; }
+  balance -= c.price; updateBalance();
+  rolling = true;
+  if (tg) tg.HapticFeedback?.impactOccurred('medium');
+
+  go('roulette');
+  document.getElementById('rouletteTitle').textContent = 'Открытие кейса...';
+  document.getElementById('rouletteResult').textContent = '';
+
+  const winner = pickWeighted(c.items);
+  const strip = [];
+  for (let i=0;i<50;i++) strip.push(i===40 ? winner : c.items[Math.floor(Math.random()*c.items.length)]);
+
+  const el = document.getElementById('roulette');
+  el.style.transition = 'none';
+  el.style.transform = 'translateX(0)';
+  el.innerHTML = strip.map(it => `<div class="item"><span class="e">${it.e}</span>${it.n}</div>`).join('');
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const itemW = 78;
+      const wrapW = el.parentElement.offsetWidth;
+      const offset = 40 * itemW + itemW/2 - wrapW/2;
+      el.style.transition = 'transform 4s cubic-bezier(.15,.85,.3,1)';
+      el.style.transform = `translateX(-${offset}px)`;
+    });
+  });
+
+  setTimeout(() => {
+    balance += winner.v; updateBalance();
+    document.getElementById('rouletteResult').textContent = `Выпало: ${winner.e} ${winner.n} монет!`;
+    document.getElementById('rouletteResult').className = 'msg win';
+    if (tg) tg.HapticFeedback?.notificationOccurred('success');
+    rolling = false;
+  }, 4200);
+}
+
+// ===== САПЁР 6x6 =====
+const GRID = 36, MINES = 5;
+let minesActive = false, minesOpened = 0, minePositions = [], minesBet = 0;
+
+function buildGrid() {
+  const g = document.getElementById('minesGrid');
+  g.innerHTML = '';
+  for (let i=0;i<GRID;i++) {
+    const d = document.createElement('div');
+    d.className = 'cell6';
+    d.dataset.i = i;
+    d.onclick = () => clickCell(i, d);
+    g.appendChild(d);
+  }
+}
+
+function startMines() {
+  const bet = parseInt(document.getElementById('minesBet').value);
+  if (!bet || bet < 10) { showMsg('minesMsg','Мин. ставка 10','lose'); return; }
+  if (bet > balance) { showMsg('minesMsg','Недостаточно монет','lose'); return; }
+  balance -= bet; updateBalance();
+  minesBet = bet; minesActive = true; minesOpened = 0; minePositions = [];
+  while (minePositions.length < MINES) {
+    const p = Math.floor(Math.random()*GRID);
+    if (!minePositions.includes(p)) minePositions.push(p);
+  }
+  buildGrid(); updateMult();
+  document.getElementById('minesStart').classList.add('hidden');
+  document.getElementById('minesCashout').classList.remove('hidden');
+  document.getElementById('minesMsg').textContent = '';
+  if (tg) tg.HapticFeedback?.impactOccurred('medium');
+}
+
+function clickCell(i, el) {
+  if (!minesActive || el.classList.contains('opened')) return;
+  el.classList.add('opened');
+  if (minePositions.includes(i)) {
+    el.classList.add('mine'); el.textContent = '💣';
+    minesActive = false;
+    if (tg) tg.HapticFeedback?.notificationOccurred('error');
+    document.querySelectorAll('.cell6').forEach((c,j) => {
+      if (minePositions.includes(j) && j !== i) { c.classList.add('opened','mine'); c.textContent = '💣'; }
+    });
+    document.getElementById('minesCashout').classList.add('hidden');
+    document.getElementById('minesStart').classList.remove('hidden');
+    showMsg('minesMsg',`Взрыв! Потеряно ${minesBet} 💰`,'lose');
+  } else {
+    el.classList.add('safe'); el.textContent = '💚';
+    minesOpened++;
+    if (tg) tg.HapticFeedback?.impactOccurred('light');
+    updateMult();
+    if (minesOpened === GRID - MINES) cashoutMines();
+  }
+}
+
+function mult() { return Math.pow(GRID/(GRID-MINES), minesOpened) * 0.95; }
+function updateMult() { document.getElementById('minesMult').textContent = mult().toFixed(2); }
+
+function cashoutMines() {
+  if (!minesActive || minesOpened === 0) return;
+  const win = Math.floor(minesBet * mult());
+  balance += win; updateBalance();
+  minesActive = false;
+  if (tg) tg.HapticFeedback?.notificationOccurred('success');
+  document.querySelectorAll('.cell6').forEach((c,j) => {
+    if (minePositions.includes(j)) { c.classList.add('opened','mine'); c.textContent='💣'; }
+  });
+  document.getElementById('minesCashout').classList.add('hidden');
+  document.getElementById('minesStart').classList.remove('hidden');
+  showMsg('minesMsg',`Забрано ${win} 💰 (x${mult().toFixed(2)})`,'win');
+}
+
+// ===== КЛИКЕР =====
+// Доход за клик: 1 → 2 → 4 → 8 → 16 → 32...
+// Стоимость улучшения: 50 → 100 → 200 → 400 → 800...
+let perClick = parseInt(localStorage.getItem('perClick') || '1');
+let upgrades = parseInt(localStorage.getItem('upgradesBought') || '0');
+
+function upgradeCost() {
+  return 50 * Math.pow(2, upgrades);
+}
+
+function saveClicker() {
+  localStorage.setItem('perClick', perClick);
+  localStorage.setItem('upgradesBought', upgrades);
+}
+
+function renderClicker() {
+  document.getElementById('perClick').textContent = perClick;
+  document.getElementById('clickerLevel').textContent = upgrades + 1;
+  document.getElementById('upgradesBought').textContent = upgrades;
+  const cost = upgradeCost();
+  const btn = document.getElementById('upgradeBtn');
+  btn.textContent = `Улучшить (+${perClick} к доходу) — ${cost} 💰`;
+  btn.disabled = balance < cost;
+}
+
+function clickCoin(e) {
+  balance += perClick; updateBalance();
+  const btn = document.getElementById('coinBtn');
+  btn.classList.remove('pop');
+  void btn.offsetWidth;
+  btn.classList.add('pop');
+  if (tg) tg.HapticFeedback?.impactOccurred('light');
+
+  // Всплывающая цифра
+  const f = document.createElement('div');
+  f.className = 'float';
+  f.textContent = '+' + perClick;
+  const rect = btn.getBoundingClientRect();
+  const x = (e && e.clientX) ? e.clientX : rect.left + rect.width/2;
+  const y = (e && e.clientY) ? e.clientY : rect.top + rect.height/2;
+  f.style.left = (x - 20) + 'px';
+  f.style.top = (y - 20) + 'px';
+  document.body.appendChild(f);
+  setTimeout(() => f.remove(), 1000);
+
+  renderClicker();
+}
+
+function buyUpgrade() {
+  const cost = upgradeCost();
+  if (balance < cost) { showMsg('clickerMsg','Недостаточно монет','lose'); return; }
+  balance -= cost; updateBalance();
+  perClick *= 2;
+  upgrades++;
+  saveClicker();
+  if (tg) tg.HapticFeedback?.notificationOccurred('success');
+  showMsg('clickerMsg',`Улучшено! Теперь +${perClick} за клик`,'win');
+  renderClicker();
+}
+
+// ===== УТИЛИТЫ =====
+function showMsg(id, text, cls) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'msg ' + (cls || '');
+}
+
+// init
+buildGrid();
+renderClicker();
+updateBalance();
+</script>
+</body>
+</html>
